@@ -2693,6 +2693,57 @@ class AIAgent:
         """Return the last captured RateLimitState, or None."""
         return self._rate_limit_state
 
+    def _capture_credits(self, http_response: Any) -> None:
+        """Parse x-nous-credits-* headers and cache CreditsState (fail-open)."""
+        if http_response is None:
+            return
+        headers = getattr(http_response, "headers", None)
+        if not headers:
+            return
+        _dev = os.environ.get("HERMES_DEV_CREDITS", "").strip().lower() in ("1", "true", "yes", "on")
+        try:
+            from agent.credits_tracker import parse_credits_headers
+            state = parse_credits_headers(headers, provider=self.provider)
+            if state is not None:   # retain-last-known: only overwrite on a fresh valid parse
+                self._credits_state = state
+                # Latch session-start remaining the first time we ever see a header
+                if self._credits_session_start_micros is None:
+                    self._credits_session_start_micros = state.remaining_micros
+                if _dev:
+                    # HERMES_DEV_CREDITS: stream each capture to agent.log — watch live with
+                    # `hermes logs -f` (grep 'credits ▸'). Dev-only; silent for normal users.
+                    spent = self.get_credits_spent_micros()
+                    used = state.used_fraction
+                    logger.info(
+                        "credits ▸ remaining=%d (%s) · paid=%s · denom=%s · used=%s "
+                        "· Δspent=%s · age=%s%s",
+                        state.remaining_micros,
+                        state.remaining_usd or "?",
+                        state.paid_access,
+                        state.denominator_kind,
+                        ("%.0f%%" % (used * 100)) if used is not None else "n/a",
+                        ("%.1f¢" % (spent / 10000)) if spent is not None else "n/a",
+                        ("%.0fs" % state.age_seconds) if state.age_seconds != float("inf") else "n/a",
+                        (" · disabled=%s" % state.disabled_reason) if state.disabled_reason else "",
+                    )
+            elif _dev:
+                logger.info(
+                    "credits ▸ response had no valid x-nous-credits-* headers "
+                    "(miss — producer off / non-Nous path / >TTL stale)"
+                )
+        except Exception:
+            pass  # never break the agent loop
+
+    def get_credits_state(self):
+        """Return the last captured CreditsState, or None."""
+        return self._credits_state
+
+    def get_credits_spent_micros(self):
+        """Session-cumulative micros spent = first_seen_remaining - current_remaining. None if no data."""
+        if self._credits_session_start_micros is None or self._credits_state is None:
+            return None
+        return self._credits_session_start_micros - self._credits_state.remaining_micros
+
     def _check_openrouter_cache_status(self, http_response: Any) -> None:
         """Read X-OpenRouter-Cache-Status from response headers and log it.
 

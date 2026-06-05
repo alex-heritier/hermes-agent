@@ -507,6 +507,13 @@ def init_agent(
     # after each API call.  Accessed by /usage slash command.
     agent._rate_limit_state: Optional["RateLimitState"] = None
 
+    # Credits tracking (dev-only, L0 usage-aware-credits) — updated from
+    # x-nous-credits-* response headers after each API call.  Session-start
+    # remaining is latched the first time a header is ever seen so we can
+    # report cumulative micros spent.  Surfaced behind HERMES_DEV_CREDITS.
+    agent._credits_state = None
+    agent._credits_session_start_micros = None
+
     # OpenRouter response cache hit counter — incremented when
     # X-OpenRouter-Cache-Status: HIT is seen in streaming response headers.
     agent._or_cache_hits: int = 0

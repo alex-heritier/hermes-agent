@@ -436,6 +436,21 @@ export function StatusRule({
   const sessionCountText = liveSessionCount > 0 ? statusSessionCountLabel(liveSessionCount) : ''
   const compressions = typeof usage.compressions === 'number' ? usage.compressions : 0
   const costText = typeof usage.cost_usd === 'number' ? `$${usage.cost_usd.toFixed(4)}` : ''
+  // HERMES_DEV_CREDITS test-mode banner. Read straight from the env the launcher forwards
+  // to this process (same var the gateway gates _get_usage on), so it shows from the FIRST
+  // frame — before any header lands — making it unmistakable we're in the throwaway
+  // dev-credits readout mode. Precedent: the TUI already reads HERMES_VOICE/HERMES_CWD here.
+  const devCreditsMode = ['1', 'true', 'yes', 'on'].includes(
+    (process.env.HERMES_DEV_CREDITS ?? '').trim().toLowerCase(),
+  )
+  // Dev-only readout (HERMES_DEV_CREDITS). The server omits the key entirely unless the
+  // flag is on, so this segment self-hides for normal users. micros→cents is allowed money
+  // math (display formatting) — never parseFloat a *_usd. Signed: a mid-session top-up that
+  // raises remaining nets a negative Δ (honest).
+  const devCreditsText =
+    typeof usage.dev_credits_spent_micros === 'number'
+      ? `Δ ${(usage.dev_credits_spent_micros / 10000).toFixed(1)}¢`
+      : ''
 
   const showBar = !!bar && fits(SEP + stringWidth(`[${bar}] ${pct != null ? `${pct}%` : ''}`))
   const showDuration = segs.duration && !!sessionStartedAt && fits(SEP + MAX_DURATION_WIDTH)
@@ -444,6 +459,9 @@ export function StatusRule({
   const showSessionCount = !!sessionCountText && fits(SEP + stringWidth(sessionCountText))
   const showBg = segs.bg && bgCount > 0 && fits(SEP + stringWidth(`${bgCount} bg`))
   const showCostSeg = segs.cost && showCost && !!costText && fits(SEP + stringWidth(costText))
+  // No segs flag / no showCost coupling — it's a server-gated dev readout, lowest priority,
+  // so it consumes tail budget LAST and drops first on a narrow terminal.
+  const showDevCredits = !!devCreditsText && fits(SEP + stringWidth(devCreditsText))
 
   const handleSessionCountClick = (event: { stopImmediatePropagation?: () => void }) => {
     event.stopImmediatePropagation?.()
@@ -471,6 +489,11 @@ export function StatusRule({
               {status}
             </Text>
           )}
+          {devCreditsMode ? (
+            <Text color={t.color.warn} wrap="truncate-end">
+              {' (dev credits)'}
+            </Text>
+          ) : null}
           <Text color={t.color.muted} wrap="truncate-end">
             {' │ '}
             {modelText}
@@ -524,6 +547,12 @@ export function StatusRule({
           <Text color={t.color.muted} wrap="truncate-end">
             {' │ '}
             {costText}
+          </Text>
+        ) : null}
+        {showDevCredits ? (
+          <Text color={t.color.accent} wrap="truncate-end">
+            {' │ '}
+            {devCreditsText}
           </Text>
         ) : null}
         {/* SpawnHud isn't part of the tail budget (its width is dynamic), so it

@@ -1606,6 +1606,16 @@ def _get_usage(agent) -> dict:
             usage["cost_usd"] = float(cost.amount_usd)
     except Exception:
         pass
+    # Dev-only live credits-spent readout (L0 usage-aware-credits). Gated on
+    # HERMES_DEV_CREDITS so the payload stays clean when the flag is off.
+    import os
+    if os.environ.get("HERMES_DEV_CREDITS", "").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            spent = agent.get_credits_spent_micros()
+            if spent is not None:
+                usage["dev_credits_spent_micros"] = int(spent)
+        except Exception:
+            pass
     return usage
 
 
