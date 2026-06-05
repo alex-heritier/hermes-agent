@@ -6,6 +6,7 @@ import unicodeSpinners from 'unicode-animations'
 import { $delegationState } from '../app/delegationStore.js'
 import type { IndicatorStyle, Notice } from '../app/interfaces.js'
 import { useTurnSelector } from '../app/turnStore.js'
+import { DEV_CREDITS_MODE } from '../config/env.js'
 import { FACES } from '../content/faces.js'
 import { VERBS } from '../content/verbs.js'
 import { fmtDuration } from '../domain/messages.js'
@@ -476,13 +477,6 @@ export function StatusRule({
   const sessionCountText = liveSessionCount > 0 ? statusSessionCountLabel(liveSessionCount) : ''
   const compressions = typeof usage.compressions === 'number' ? usage.compressions : 0
   const costText = typeof usage.cost_usd === 'number' ? `$${usage.cost_usd.toFixed(4)}` : ''
-  // HERMES_DEV_CREDITS test-mode banner. Read straight from the env the launcher forwards
-  // to this process (same var the gateway gates _get_usage on), so it shows from the FIRST
-  // frame — before any header lands — making it unmistakable we're in the throwaway
-  // dev-credits readout mode. Precedent: the TUI already reads HERMES_VOICE/HERMES_CWD here.
-  const devCreditsMode = ['1', 'true', 'yes', 'on'].includes(
-    (process.env.HERMES_DEV_CREDITS ?? '').trim().toLowerCase(),
-  )
   // Dev-only readout (HERMES_DEV_CREDITS). The server omits the key entirely unless the
   // flag is on, so this segment self-hides for normal users. micros→cents is allowed money
   // math (display formatting) — never parseFloat a *_usd. Signed: a mid-session top-up that
@@ -545,7 +539,7 @@ export function StatusRule({
         ) : null}
         {/* Pinned essentials — model + context never shrink, always visible. */}
         <Box flexDirection="row" flexShrink={0}>
-          {devCreditsMode ? (
+          {DEV_CREDITS_MODE ? (
             <Text color={t.color.warn} wrap="truncate-end">
               {' (dev credits)'}
             </Text>
