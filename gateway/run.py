@@ -14077,40 +14077,20 @@ class GatewayRunner:
             if account_snapshot:
                 account_lines = render_account_usage_lines(account_snapshot, markdown=True)
 
-        # ── Nous credits magnitudes + monthly-grant % gauge (L6) ────────
-        # Nous-native data via the portal account, NOT fetch_account_usage
-        # (per-provider boundary). NO recovery trigger here: messaging binds
-        # no notice consumer (Q2), so /usage only displays.
-        #
-        # Gated on "a Nous account is logged in", NOT on the inference provider
-        # string and NOT nested under `if provider:` — a Nous-credentialled user
-        # may run inference on another provider (or none resident), yet still
-        # wants their credit balance. The presence check is a cheap local
-        # auth-state lookup; the portal fetch fires only when a token exists.
-        _nous_present = False
+        # ── Nous credits magnitudes + monthly-grant % gauge ─────────────
+        # Shared with the CLI / TUI /usage block via nous_credits_lines(): a single
+        # auth-gate + portal-fetch + render path (which also honors the dev fixture).
+        # Run off the event loop. The helper gates on "a Nous account is logged in"
+        # — NOT the inference provider and NOT nested under `if provider:` — so a
+        # Nous-credentialled user running inference elsewhere (or with none resident)
+        # still sees their balance. NO recovery trigger: messaging binds no notice
+        # consumer, so /usage only displays. Fail-open: never break /usage.
         try:
-            from hermes_cli.auth import get_provider_auth_state
+            from agent.account_usage import nous_credits_lines
 
-            _nous_state = get_provider_auth_state("nous") or {}
-            _nous_tok = _nous_state.get("access_token")
-            _nous_present = isinstance(_nous_tok, str) and bool(_nous_tok.strip())
+            credits_lines = await asyncio.to_thread(nous_credits_lines, markdown=True)
         except Exception:
-            _nous_present = False
-        if _nous_present:
-            try:
-                from hermes_cli.nous_account import get_nous_portal_account_info
-                from agent.account_usage import build_nous_credits_snapshot
-
-                nous_account = await asyncio.to_thread(
-                    get_nous_portal_account_info, force_fresh=True
-                )
-                credits_snapshot = build_nous_credits_snapshot(nous_account)
-                if credits_snapshot:
-                    credits_lines = render_account_usage_lines(
-                        credits_snapshot, markdown=True
-                    )
-            except Exception:
-                credits_lines = []  # fail-open: never break /usage
+            credits_lines = []  # fail-open: never break /usage
 
         if agent and hasattr(agent, "session_total_tokens") and agent.session_api_calls > 0:
             lines = []
